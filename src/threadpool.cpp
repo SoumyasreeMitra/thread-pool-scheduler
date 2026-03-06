@@ -1,6 +1,8 @@
 #include "../include/threadpool.h"
+#include <iostream>
+#include <chrono>
 
-ThreadPool::ThreadPool(size_t threads) : stop(false) {
+ThreadPool::ThreadPool(size_t threads) : stop(false), tasks_completed(0) {
 
     for(size_t i = 0; i < threads; ++i) {
 
@@ -8,23 +10,38 @@ ThreadPool::ThreadPool(size_t threads) : stop(false) {
 
             while(true) {
 
-                std::function<void()> task;
+                Task task;
 
                 {
-                    std::unique_lock<std::mutex> lock(this->queue_mutex);
+                    std::unique_lock<std::mutex> lock(queue_mutex);
 
-                    this->condition.wait(lock, [this] {
-                        return this->stop || !this->tasks.empty();
+                    condition.wait(lock, [this] {
+
+                        return stop || !tasks.empty();
+
                     });
 
-                    if(this->stop && this->tasks.empty())
+                    if(stop && tasks.empty())
                         return;
 
-                    task = std::move(this->tasks.front());
-                    this->tasks.pop();
+                    task = tasks.top();
+                    tasks.pop();
                 }
 
-                task();
+                auto start = std::chrono::high_resolution_clock::now();
+
+                task.func();
+
+                auto end = std::chrono::high_resolution_clock::now();
+
+                auto duration =
+                std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+                std::cout << "Task completed in "
+                          << duration.count()
+                          << " us\n";
+
+                tasks_completed++;
 
             }
 
@@ -34,11 +51,12 @@ ThreadPool::ThreadPool(size_t threads) : stop(false) {
 
 }
 
-void ThreadPool::enqueue(std::function<void()> task) {
+void ThreadPool::enqueue(std::function<void()> task, int priority) {
 
     {
         std::unique_lock<std::mutex> lock(queue_mutex);
-        tasks.push(task);
+
+        tasks.push(Task{priority, task});
     }
 
     condition.notify_one();
@@ -56,5 +74,9 @@ ThreadPool::~ThreadPool() {
 
     for(std::thread &worker : workers)
         worker.join();
+
+    std::cout << "Total tasks executed: "
+              << tasks_completed.load()
+              << std::endl;
 
 }
