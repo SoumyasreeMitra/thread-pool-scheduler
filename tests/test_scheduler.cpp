@@ -1,5 +1,7 @@
 #include "../include/threadpool.h"
 #include <iostream>
+#include <chrono>
+#include <thread>
 
 int main() {
 
@@ -9,9 +11,13 @@ int main() {
 
         pool.enqueue([i] {
 
-            std::cout << "Task " << i << " executed\n";
+            std::this_thread::sleep_for(
+            std::chrono::milliseconds(50));
 
-        });
+            std::cout << "Task " << i
+                      << " executed\n";
+
+        }, i % 3);
 
     }
 
